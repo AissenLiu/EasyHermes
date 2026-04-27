@@ -1,5 +1,7 @@
 # Runtime generated on the target Windows machine
 /runtime/python/
+/runtime/node/
+/runtime/node-extract/
 /runtime/.install-stamp
 
 # Local state
@@ -13,12 +15,13 @@
 *.zip.tmp
 /packages/python/*.zip
 /packages/python/get-pip.py
+/packages/node/*.zip
 /packages/wheelhouse/*.whl
-/hermes-webui/static/vendor/katex/
-/hermes-webui/static/vendor/prism/
-/hermes-webui/static/vendor/mermaid/
+/hermes-webui/dist/
+/hermes-webui/package-lock.json
+/hermes-webui/node_modules/
 
-# Python / local artifacts
+# Python / Node local artifacts
 __pycache__/
 *.py[cod]
 .pytest_cache/

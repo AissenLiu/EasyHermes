@@ -14,11 +14,16 @@ $AgentDir = Join-Path $Root "hermes-agent"
 $WebuiDir = Join-Path $Root "hermes-webui"
 $RuntimeDir = Join-Path $Root "runtime"
 $PythonDir = Join-Path $RuntimeDir "python"
+$PythonScriptsDir = Join-Path $PythonDir "Scripts"
 $PythonExe = Join-Path $PythonDir "python.exe"
+$NodeDir = Join-Path $RuntimeDir "node"
+$NodeExe = Join-Path $NodeDir "node.exe"
 $PackagePythonDir = Join-Path $Root "packages\python"
+$PackageNodeDir = Join-Path $Root "packages\node"
 $Wheelhouse = Join-Path $Root "packages\wheelhouse"
 $ReqFile = Join-Path $Root "packaging\windows\requirements-windows.txt"
 $InstallStamp = Join-Path $RuntimeDir ".install-stamp"
+$HermesBin = ""
 
 function Write-Step([string]$Message) {
   Write-Host "[EazyHermes] $Message"
@@ -37,7 +42,7 @@ function Enable-EmbeddedPythonSite {
   }
 
   $lines = Get-Content -Path $pth.FullName
-  $requiredPaths = @(".", "..\..\hermes-webui", "..\..\hermes-agent")
+  $requiredPaths = @(".", "..\..\hermes-agent")
   $seen = @{}
   $next = @()
 
@@ -82,6 +87,38 @@ function Initialize-PythonRuntime {
   Enable-EmbeddedPythonSite
 }
 
+function Initialize-NodeRuntime {
+  if (Test-Path $NodeExe) {
+    return
+  }
+
+  $zip = Get-ChildItem -Path $PackageNodeDir -Filter "node-v*-win-x64.zip" -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending |
+    Select-Object -First 1
+
+  if ($null -eq $zip) {
+    throw "Missing Windows Node.js zip in packages\node. Run scripts\prepare-offline-bundle.ps1 first."
+  }
+
+  Write-Step "Extracting Node.js runtime..."
+  $tmp = Join-Path $RuntimeDir "node-extract"
+  if (Test-Path $tmp) {
+    Remove-Item $tmp -Recurse -Force
+  }
+  if (Test-Path $NodeDir) {
+    Remove-Item $NodeDir -Recurse -Force
+  }
+  New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+  New-Item -ItemType Directory -Force -Path $NodeDir | Out-Null
+  Expand-Archive -Path $zip.FullName -DestinationPath $tmp -Force
+  $expanded = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
+  if ($null -eq $expanded) {
+    throw "Node.js zip did not contain an expected top-level directory."
+  }
+  Get-ChildItem -Path $expanded.FullName -Force | Move-Item -Destination $NodeDir
+  Remove-Item $tmp -Recurse -Force
+}
+
 function Install-PipOffline {
   $pipCheck = & $PythonExe -c "import pip" 2>$null
   if ($LASTEXITCODE -eq 0) {
@@ -113,10 +150,9 @@ function Install-DependenciesOffline {
     throw "Dependency install failed."
   }
 
-  Write-Step "Installing vendored hermes-agent and hermes-webui..."
+  Write-Step "Installing vendored hermes-agent..."
   $agentSpec = "${AgentDir}[cli,cron,pty]"
-  $webuiReq = Join-Path $WebuiDir "requirements.txt"
-  & $PythonExe -m pip install --no-index --find-links $Wheelhouse --no-build-isolation $agentSpec -r $webuiReq
+  & $PythonExe -m pip install --no-index --find-links $Wheelhouse --no-build-isolation $agentSpec
   if ($LASTEXITCODE -ne 0) {
     throw "Hermes package install failed."
   }
@@ -125,10 +161,58 @@ function Install-DependenciesOffline {
   Set-Content -Path $InstallStamp -Value (Get-Date -Format o) -Encoding ASCII
 }
 
-function Test-EmbeddedImports {
-  & $PythonExe -c "import api.auth; import api.config; import run_agent"
+function Resolve-HermesBin {
+  $candidates = @(
+    (Join-Path $PythonScriptsDir "hermes.exe"),
+    (Join-Path $PythonScriptsDir "hermes.cmd"),
+    (Join-Path $PythonScriptsDir "hermes")
+  )
+
+  foreach ($candidate in $candidates) {
+    if (Test-Path $candidate) {
+      $script:HermesBin = $candidate
+      return
+    }
+  }
+
+  throw "Missing Hermes CLI executable in runtime\python\Scripts."
+}
+
+function Set-RuntimeEnvironment {
+  $dataDir = Join-Path $Root "data"
+  $hermesHome = Join-Path $dataDir ".hermes"
+  $webuiData = Join-Path $dataDir "webui"
+
+  $env:PYTHONUTF8 = "1"
+  $env:PYTHONPATH = (@($AgentDir, $env:PYTHONPATH) | Where-Object { $_ }) -join ";"
+  $env:PATH = (@($NodeDir, $PythonDir, $PythonScriptsDir, $env:PATH) | Where-Object { $_ }) -join ";"
+  $env:USERPROFILE = $dataDir
+  $env:HOME = $dataDir
+  $env:HERMES_HOME = $hermesHome
+  $env:HERMES_BASE_HOME = $hermesHome
+  $env:HERMES_BIN = $script:HermesBin
+  $env:HOST = $HostName
+  $env:PORT = [string]$Port
+  $env:UPSTREAM = "http://127.0.0.1:8642"
+  $env:UPLOAD_DIR = Join-Path $webuiData "upload"
+  $env:HERMES_WEBUI_DATA_DIR = $webuiData
+  $env:AUTH_DISABLED = "1"
+}
+
+function Test-EmbeddedRuntime {
+  & $PythonExe -c "import run_agent"
   if ($LASTEXITCODE -ne 0) {
     throw "Embedded Python import check failed. The offline package may be incomplete."
+  }
+
+  $serverEntry = Join-Path $WebuiDir "dist\server\index.js"
+  Assert-PathExists $serverEntry "Missing hermes-web-ui build output. Run scripts\prepare-offline-bundle.ps1 first."
+  Assert-PathExists (Join-Path $WebuiDir "node_modules") "Missing hermes-web-ui node_modules. Run scripts\prepare-offline-bundle.ps1 first."
+
+  $packageJson = Join-Path $WebuiDir "package.json"
+  & $NodeExe -e "const {createRequire}=require('module'); const req=createRequire(process.argv[1]); req.resolve('socket.io'); req.resolve('node-pty');" $packageJson
+  if ($LASTEXITCODE -ne 0) {
+    throw "Embedded Node dependency check failed. The offline package may be incomplete."
   }
 }
 
@@ -136,8 +220,8 @@ function Wait-Health([string]$Url, [int]$TimeoutSeconds) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
     try {
-      $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
-      if ($resp.StatusCode -eq 200 -and $resp.Content -match '"status"\s*:\s*"ok"') {
+      $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3
+      if ($resp.StatusCode -eq 200) {
         return $true
       }
     } catch {
@@ -155,22 +239,13 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Root "data\.hermes") | Out
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "data\webui") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "workspace") | Out-Null
 
-$env:PYTHONUTF8 = "1"
-$env:PYTHONPATH = (@($WebuiDir, $AgentDir, $env:PYTHONPATH) | Where-Object { $_ }) -join ";"
-$env:HERMES_HOME = Join-Path $Root "data\.hermes"
-$env:HERMES_BASE_HOME = $env:HERMES_HOME
-$env:HERMES_WEBUI_AGENT_DIR = $AgentDir
-$env:HERMES_WEBUI_PYTHON = $PythonExe
-$env:HERMES_WEBUI_STATE_DIR = Join-Path $Root "data\webui"
-$env:HERMES_WEBUI_DEFAULT_WORKSPACE = Join-Path $Root "workspace"
-$env:HERMES_WEBUI_HOST = $HostName
-$env:HERMES_WEBUI_PORT = [string]$Port
-$env:HERMES_WEBUI_AUTO_INSTALL = "0"
-
 Initialize-PythonRuntime
+Initialize-NodeRuntime
 Install-PipOffline
 Install-DependenciesOffline
-Test-EmbeddedImports
+Resolve-HermesBin
+Set-RuntimeEnvironment
+Test-EmbeddedRuntime
 
 if ($PrepareOnly) {
   Write-Step "Runtime is ready."
@@ -178,22 +253,23 @@ if ($PrepareOnly) {
 }
 
 $url = "http://127.0.0.1:$Port"
+$serverEntry = Join-Path $WebuiDir "dist\server\index.js"
 Write-Step "Starting WebUI at $url ..."
 
 $proc = $null
 try {
-  $proc = Start-Process -FilePath $PythonExe -ArgumentList @((Join-Path $WebuiDir "server.py")) -WorkingDirectory $WebuiDir -NoNewWindow -PassThru
+  $proc = Start-Process -FilePath $NodeExe -ArgumentList @($serverEntry) -WorkingDirectory $WebuiDir -NoNewWindow -PassThru
   $health = "http://$HostName`:$Port/health"
-  if (Wait-Health -Url $health -TimeoutSeconds 35) {
+  if (Wait-Health -Url $health -TimeoutSeconds 90) {
     Write-Step "WebUI is ready: $url"
     if (-not $NoBrowser) {
       Start-Process $url | Out-Null
     }
   } else {
-    Write-Warning "WebUI did not report healthy within 35 seconds. It may still be starting."
+    Write-Warning "WebUI did not report healthy within 90 seconds. It may still be starting."
     $proc.Refresh()
     if ($proc.HasExited) {
-      throw "WebUI process exited early with code $($proc.ExitCode). See the traceback above for details."
+      throw "WebUI process exited early with code $($proc.ExitCode). See the logs above for details."
     }
   }
 

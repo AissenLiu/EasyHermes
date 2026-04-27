@@ -197,6 +197,7 @@ if ($Refresh -or -not $hasWheels) {
   & $DownloadPython -m pip download `
     --dest $Wheelhouse `
     --only-binary=:all: `
+    --no-binary alibabacloud-endpoint-util `
     --platform win_amd64 `
     --implementation cp `
     --python-version $PyTag `

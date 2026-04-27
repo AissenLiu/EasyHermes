@@ -1,0 +1,43 @@
+name: Build Hermes Web UI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/webui-build.yml"
+      - "hermes-webui/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/webui-build.yml"
+      - "hermes-webui/**"
+
+permissions:
+  contents: read
+
+jobs:
+  webui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hermes-webui
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

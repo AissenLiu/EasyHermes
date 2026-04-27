@@ -195,12 +195,12 @@ if ($Refresh -or -not $hasWheels) {
 
   Write-Step "Refreshing Windows wheelhouse with $DownloadPython"
   # GitHub runs this on Windows with the same Python version as the embedded
-  # runtime, so pip resolves Windows wheels directly. The DingTalk SDK has one
-  # pure-Python sdist dependency without a wheel, so allow that package only.
+  # runtime, so pip resolves Windows wheels directly. A few DingTalk SDK helper
+  # packages are pure-Python sdists without wheels, so allow those packages only.
   & $DownloadPython -m pip download `
     --dest $Wheelhouse `
     --only-binary=:all: `
-    --no-binary alibabacloud-endpoint-util `
+    --no-binary alibabacloud-endpoint-util,alibabacloud-gateway-dingtalk,alibabacloud-gateway-spi `
     -r $ReqFile
   if ($LASTEXITCODE -ne 0) {
     throw "pip download failed."

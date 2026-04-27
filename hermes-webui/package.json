@@ -50,7 +50,7 @@
     "dev:client": "vite --host",
     "dev:server": "nodemon --signal SIGTERM --watch packages/server/src -e ts,tsx --exec TS_NODE_PROJECT=packages/server/tsconfig.json node -r ts-node/register packages/server/src/index.ts",
     "build": "vue-tsc -b && vite build && tsc --noEmit -p packages/server/tsconfig.json && node scripts/build-server.mjs",
-    "prepare": "node -e \"const fs=require('fs'); const cp=require('child_process'); if(!fs.existsSync('dist')) cp.execFileSync(process.platform==='win32'?'npm.cmd':'npm',['run','build'],{stdio:'inherit'})\"",
+    "prepare": "node -e \"const fs=require('fs'); const cp=require('child_process'); if(process.env.HERMES_WEBUI_SKIP_PREPARE==='1') process.exit(0); if(!fs.existsSync('dist')) cp.execFileSync(process.platform==='win32'?'npm.cmd':'npm',['run','build'],{stdio:'inherit'})\"",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

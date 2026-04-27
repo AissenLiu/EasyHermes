@@ -89,14 +89,17 @@ function Build-Webui {
 
   Push-Location $WebuiDir
   $oldPath = $env:PATH
+  $oldSkipPrepare = $env:HERMES_WEBUI_SKIP_PREPARE
   try {
     $env:PATH = "$NodeDir;$env:PATH"
+    $env:HERMES_WEBUI_SKIP_PREPARE = "1"
     Write-Step "Installing hermes-web-ui npm dependencies"
     & $NpmCmd install --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) {
       throw "npm install failed."
     }
 
+    Remove-Item Env:HERMES_WEBUI_SKIP_PREPARE -ErrorAction SilentlyContinue
     Write-Step "Building hermes-web-ui"
     & $NpmCmd run build
     if ($LASTEXITCODE -ne 0) {
@@ -109,6 +112,11 @@ function Build-Webui {
       throw "npm prune failed."
     }
   } finally {
+    if ($null -ne $oldSkipPrepare) {
+      $env:HERMES_WEBUI_SKIP_PREPARE = $oldSkipPrepare
+    } else {
+      Remove-Item Env:HERMES_WEBUI_SKIP_PREPARE -ErrorAction SilentlyContinue
+    }
     $env:PATH = $oldPath
     Pop-Location
   }

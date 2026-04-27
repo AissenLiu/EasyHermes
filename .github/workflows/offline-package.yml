@@ -11,10 +11,6 @@ on:
         description: Windows embeddable Python version
         default: "3.11.9"
         required: true
-      node_version:
-        description: Windows portable Node.js version
-        default: "20.11.1"
-        required: true
 
 permissions:
   contents: write
@@ -23,7 +19,7 @@ jobs:
   windows-portable:
     name: Windows portable offline zip
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -42,7 +38,6 @@ jobs:
           .\scripts\prepare-offline-bundle.ps1 `
             -Refresh `
             -PythonVersion "${{ github.event.inputs.python_version || '3.11.9' }}" `
-            -NodeVersion "${{ github.event.inputs.node_version || '20.11.1' }}" `
             -DownloadPython (Get-Command python).Source
 
       - name: Generate checksum

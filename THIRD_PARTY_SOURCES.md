@@ -11,7 +11,10 @@ GitHub Actions also downloads runtime/package assets while building the Windows
 offline Release:
 
 - Windows embeddable Python: https://www.python.org/
-- Windows portable Node.js: https://nodejs.org/
 - Python wheels: https://pypi.org/
-- Node packages: https://www.npmjs.com/
 - WebUI browser assets: KaTeX, Prism.js, Mermaid, and streaming-markdown
+
+The default offline Release is intentionally slim for intranet Windows usage. It
+does not download Docker images, Node.js runtimes, npm packages, browser
+automation packages, platform bot integrations, voice packages, training extras,
+or development/test extras.

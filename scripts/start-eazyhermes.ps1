@@ -15,10 +15,7 @@ $WebuiDir = Join-Path $Root "hermes-webui"
 $RuntimeDir = Join-Path $Root "runtime"
 $PythonDir = Join-Path $RuntimeDir "python"
 $PythonExe = Join-Path $PythonDir "python.exe"
-$NodeDir = Join-Path $RuntimeDir "node"
-$NodeExe = Join-Path $NodeDir "node.exe"
 $PackagePythonDir = Join-Path $Root "packages\python"
-$PackageNodeDir = Join-Path $Root "packages\node"
 $Wheelhouse = Join-Path $Root "packages\wheelhouse"
 $ReqFile = Join-Path $Root "packaging\windows\requirements-windows.txt"
 $InstallStamp = Join-Path $RuntimeDir ".install-stamp"
@@ -77,60 +74,6 @@ function Initialize-PythonRuntime {
   Enable-EmbeddedPythonSite
 }
 
-function Initialize-NodeRuntime {
-  if (Test-Path $NodeExe) {
-    return
-  }
-
-  $zip = Get-ChildItem -Path $PackageNodeDir -Filter "node-v*-win-x64.zip" -ErrorAction SilentlyContinue |
-    Sort-Object Name -Descending |
-    Select-Object -First 1
-
-  if ($null -eq $zip) {
-    throw "Missing Windows Node.js zip in packages\node. Run scripts\prepare-offline-bundle.ps1 on an internet-connected Windows machine first."
-  }
-
-  Write-Step "Extracting Node.js runtime..."
-  $tmp = Join-Path $RuntimeDir "node-extract"
-  if (Test-Path $tmp) {
-    Remove-Item $tmp -Recurse -Force
-  }
-  if (Test-Path $NodeDir) {
-    Remove-Item $NodeDir -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-  New-Item -ItemType Directory -Force -Path $NodeDir | Out-Null
-  Expand-Archive -Path $zip.FullName -DestinationPath $tmp -Force
-  $expanded = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
-  if ($null -eq $expanded) {
-    throw "Node.js zip did not contain an expected top-level directory."
-  }
-  Get-ChildItem -Path $expanded.FullName -Force | Move-Item -Destination $NodeDir
-  Remove-Item $tmp -Recurse -Force
-}
-
-function Add-BundledToolsToPath {
-  $paths = @(
-    $NodeDir,
-    (Join-Path $AgentDir "node_modules\.bin"),
-    (Join-Path $AgentDir "scripts\whatsapp-bridge\node_modules\.bin")
-  )
-  $existing = $env:PATH -split ';'
-  $pathsToAdd = @($paths)
-  [array]::Reverse($pathsToAdd)
-  foreach ($path in $pathsToAdd) {
-    if ((Test-Path $path) -and ($existing -notcontains $path)) {
-      $env:PATH = "$path;$env:PATH"
-    }
-  }
-  if (Test-Path $NodeExe) {
-    $env:HERMES_NODE = $NodeExe
-  }
-  if (-not $env:PLAYWRIGHT_BROWSERS_PATH) {
-    $env:PLAYWRIGHT_BROWSERS_PATH = "0"
-  }
-}
-
 function Install-PipOffline {
   $pipCheck = & $PythonExe -c "import pip" 2>$null
   if ($LASTEXITCODE -eq 0) {
@@ -162,8 +105,8 @@ function Install-DependenciesOffline {
     throw "Dependency install failed."
   }
 
-  Write-Step "Installing vendored hermes-agent and hermes-webui dependencies..."
-  $agentSpec = "${AgentDir}[all]"
+  Write-Step "Installing vendored hermes-agent and hermes-webui..."
+  $agentSpec = "${AgentDir}[cli,cron,pty]"
   $webuiReq = Join-Path $WebuiDir "requirements.txt"
   & $PythonExe -m pip install --no-index --find-links $Wheelhouse --no-build-isolation $agentSpec -r $webuiReq
   if ($LASTEXITCODE -ne 0) {
@@ -198,8 +141,6 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Root "data\webui") | Out-N
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "workspace") | Out-Null
 
 Initialize-PythonRuntime
-Initialize-NodeRuntime
-Add-BundledToolsToPath
 Install-PipOffline
 Install-DependenciesOffline
 

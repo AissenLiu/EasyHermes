@@ -1,0 +1,26 @@
+# Runtime generated on the target Windows machine
+/runtime/python/
+/runtime/.install-stamp
+
+# Local state
+/data/
+/workspace/*
+!/workspace/.gitkeep
+/logs/
+
+# Build outputs
+/dist/
+*.zip.tmp
+
+# Python / Node local artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+

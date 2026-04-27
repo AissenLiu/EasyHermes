@@ -10,6 +10,7 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 $ComposeFile = Join-Path $Root "deploy\docker\compose.yml"
 $ImageTar = Join-Path $Root "offline\images\eazyhermes-amd64.tar"
+$ImageTarGz = Join-Path $Root "offline\images\eazyhermes-amd64.tar.gz"
 $ImageName = "eazyhermes:local"
 
 function Write-Step([string]$Message) {
@@ -45,9 +46,16 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Root "workspace") | Out-Nu
 
 $imageId = docker image ls $ImageName -q
 if (-not $imageId) {
+  $loadPath = $null
   if (Test-Path $ImageTar) {
-    Write-Step "Loading offline image from $ImageTar"
-    docker load -i $ImageTar
+    $loadPath = $ImageTar
+  } elseif (Test-Path $ImageTarGz) {
+    $loadPath = $ImageTarGz
+  }
+
+  if ($loadPath) {
+    Write-Step "Loading offline image from $loadPath"
+    docker load -i $loadPath
     if ($LASTEXITCODE -ne 0) {
       throw "docker load failed."
     }
@@ -58,7 +66,7 @@ if (-not $imageId) {
       throw "docker build failed."
     }
   } else {
-    throw "Missing Docker image $ImageName and offline image tar. Run scripts\prepare-docker-offline.ps1 on an internet-connected machine first."
+    throw "Missing Docker image $ImageName and offline image tar. Run scripts\prepare-docker-offline.ps1 or GitHub Actions offline packaging first."
   }
 }
 
@@ -80,4 +88,3 @@ if (Wait-Health -Url "$url/health" -TimeoutSeconds 60) {
 }
 
 Write-Step "Use 'docker compose -f deploy\docker\compose.yml logs -f' to watch logs."
-

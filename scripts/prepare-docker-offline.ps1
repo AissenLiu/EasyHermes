@@ -1,7 +1,8 @@
 param(
   [string]$ImageName = "eazyhermes:local",
   [string]$OutputName = "eazyhermes-amd64.tar",
-  [switch]$NoBuild
+  [switch]$NoBuild,
+  [switch]$Compress
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +12,11 @@ $Root = Split-Path -Parent $ScriptDir
 $Dockerfile = Join-Path $Root "deploy\docker\Dockerfile.eazyhermes"
 $OutputDir = Join-Path $Root "offline\images"
 $OutputPath = Join-Path $OutputDir $OutputName
+if ($Compress -and -not $OutputPath.EndsWith(".gz")) {
+  $CompressedOutputPath = "$OutputPath.gz"
+} else {
+  $CompressedOutputPath = $OutputPath
+}
 
 function Write-Step([string]$Message) {
   Write-Host "[EazyHermes Docker package] $Message"
@@ -41,5 +47,17 @@ if ($LASTEXITCODE -ne 0) {
   throw "docker save failed."
 }
 
-Write-Step "Offline Docker image ready: $OutputPath"
-
+if ($Compress) {
+  if (Test-Path $CompressedOutputPath) {
+    Remove-Item $CompressedOutputPath -Force
+  }
+  Write-Step "Compressing image to $CompressedOutputPath"
+  if (Get-Command gzip -ErrorAction SilentlyContinue) {
+    gzip -9 -f $OutputPath
+  } else {
+    throw "gzip is required when -Compress is set."
+  }
+  Write-Step "Offline Docker image ready: $CompressedOutputPath"
+} else {
+  Write-Step "Offline Docker image ready: $OutputPath"
+}

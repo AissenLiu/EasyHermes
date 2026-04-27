@@ -1,0 +1,85 @@
+name: Build Offline Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: Windows embeddable Python version
+        default: "3.11.9"
+        required: true
+      build_windows_portable:
+        description: Build portable Windows zip
+        default: true
+        type: boolean
+      build_docker_image:
+        description: Build Docker offline image tar.gz
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-portable:
+    name: Windows portable offline zip
+    runs-on: windows-latest
+    if: github.event_name == 'push' || github.event.inputs.build_windows_portable == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python for wheel download
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build portable offline bundle
+        shell: pwsh
+        run: |
+          .\scripts\prepare-offline-bundle.ps1 `
+            -Refresh `
+            -PythonVersion "${{ github.event.inputs.python_version || '3.11.9' }}" `
+            -DownloadPython (Get-Command python).Source
+
+      - name: Upload Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: EazyHermes-windows-offline
+          path: dist/EazyHermes-windows-offline.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  docker-image:
+    name: Docker offline image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.inputs.build_docker_image == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f deploy/docker/Dockerfile.eazyhermes \
+            -t eazyhermes:local \
+            .
+
+      - name: Save compressed image tar
+        run: |
+          mkdir -p offline/images
+          docker save eazyhermes:local -o offline/images/eazyhermes-amd64.tar
+          gzip -9 offline/images/eazyhermes-amd64.tar
+          ls -lh offline/images/
+
+      - name: Upload Docker image tar
+        uses: actions/upload-artifact@v4
+        with:
+          name: EazyHermes-docker-image-amd64
+          path: offline/images/eazyhermes-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 14

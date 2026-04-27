@@ -1,5 +1,6 @@
 param(
   [string]$PythonVersion = "3.11.9",
+  [string]$DownloadPython = "",
   [switch]$Refresh,
   [switch]$SkipZip
 )
@@ -16,6 +17,7 @@ $ReqFile = Join-Path $Root "packaging\windows\requirements-windows.txt"
 $PythonZip = Join-Path $PackagePythonDir "python-$PythonVersion-embed-amd64.zip"
 $GetPip = Join-Path $PackagePythonDir "get-pip.py"
 $PythonExe = Join-Path $RuntimeDir "python\python.exe"
+$PyTag = ($PythonVersion -replace '^(\d+)\.(\d+).*$', '$1$2')
 
 function Write-Step([string]$Message) {
   Write-Host "[EazyHermes package] $Message"
@@ -38,16 +40,33 @@ if ($Refresh -or -not (Test-Path $GetPip)) {
   Move-Item -Force "$GetPip.tmp" $GetPip
 }
 
-Write-Step "Preparing embedded Python runtime"
-& (Join-Path $ScriptDir "start-eazyhermes.ps1") -PrepareOnly -ForceInstall:$Refresh
+$hasWheels = (Get-ChildItem -Path $Wheelhouse -Filter "*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1) -ne $null
+if ($Refresh -or -not $hasWheels) {
+  if (-not $DownloadPython) {
+    $cmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($cmd) {
+      $DownloadPython = $cmd.Source
+    }
+  }
+  if (-not $DownloadPython) {
+    throw "No Python available for downloading wheels. Install Python or pass -DownloadPython."
+  }
 
-Write-Step "Refreshing wheelhouse"
-& $PythonExe -m pip download --dest $Wheelhouse --only-binary=:all: -r $ReqFile
-if ($LASTEXITCODE -ne 0) {
-  throw "pip download failed."
+  Write-Step "Refreshing Windows wheelhouse with $DownloadPython"
+  & $DownloadPython -m pip download `
+    --dest $Wheelhouse `
+    --only-binary=:all: `
+    --platform win_amd64 `
+    --implementation cp `
+    --python-version $PyTag `
+    --abi "cp$PyTag" `
+    -r $ReqFile
+  if ($LASTEXITCODE -ne 0) {
+    throw "pip download failed."
+  }
 }
 
-Write-Step "Installing runtime from refreshed wheelhouse"
+Write-Step "Preparing embedded Python runtime"
 & (Join-Path $ScriptDir "start-eazyhermes.ps1") -PrepareOnly -ForceInstall
 
 if (-not $SkipZip) {
@@ -63,4 +82,3 @@ if (-not $SkipZip) {
   Compress-Archive -Path $items.FullName -DestinationPath $zipPath -Force
   Write-Step "Offline bundle ready: $zipPath"
 }
-

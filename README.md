@@ -37,22 +37,45 @@ EazyHermes/
   scripts/
     start-eazyhermes.ps1        # Windows 启动器
     prepare-offline-bundle.ps1  # 有网环境生成离线包
+  .github/workflows/
+    offline-package.yml         # GitHub Actions 离线打包
   start-docker.bat              # 推荐：Docker 双击启动
   start.bat                     # 备选：便携 Python 双击启动
 ```
+
+## GitHub Actions 离线打包
+
+推荐由 GitHub 生成离线包：
+
+1. 打开仓库的 **Actions**。
+2. 选择 **Build Offline Packages**。
+3. 点击 **Run workflow**。
+4. 构建完成后在本次 workflow run 的 **Artifacts** 下载：
+   - `EazyHermes-windows-offline`：便携 Python 离线 zip，解压后双击 `start.bat`
+   - `EazyHermes-docker-image-amd64`：Docker 离线镜像 `eazyhermes-amd64.tar.gz`
+
+把 Docker artifact 中的 `eazyhermes-amd64.tar.gz` 放到：
+
+```text
+offline/images/eazyhermes-amd64.tar.gz
+```
+
+然后在内网 Windows 电脑双击 `start-docker.bat`，脚本会自动 `docker load` 并启动。
+
+推送 `v*` tag 时也会自动构建上述离线包。
 
 ## 内网 Windows 启动（推荐 Docker）
 
 在有网络的构建机上生成离线镜像：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare-docker-offline.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare-docker-offline.ps1 -Compress
 ```
 
 生成结果：
 
 ```text
-offline/images/eazyhermes-amd64.tar
+offline/images/eazyhermes-amd64.tar.gz
 ```
 
 把整个项目目录拷贝到内网 Windows 电脑，双击：
@@ -64,7 +87,7 @@ start-docker.bat
 脚本会自动执行：
 
 1. 检查 Docker Desktop / Docker Engine。
-2. 如果本机没有 `eazyhermes:local` 镜像，则从 `offline/images/eazyhermes-amd64.tar` 导入。
+2. 如果本机没有 `eazyhermes:local` 镜像，则从 `offline/images/eazyhermes-amd64.tar.gz` 或 `.tar` 导入。
 3. 创建 `data/` 和 `workspace/`。
 4. 启动容器并等待 `http://127.0.0.1:8787/health`。
 5. 打开 `http://127.0.0.1:8787`。

@@ -199,6 +199,7 @@ function Set-RuntimeEnvironment {
   $env:HOME = $dataDir
   $env:HERMES_HOME = $hermesHome
   $env:HERMES_BASE_HOME = $hermesHome
+  $env:HERMES_PYTHON = $PythonExe
   $env:HERMES_BIN = $script:HermesBin
   $env:HOST = $HostName
   $env:PORT = [string]$Port
@@ -211,6 +212,16 @@ function Set-RuntimeEnvironment {
 function Test-EmbeddedRuntime {
   if (-not (Test-PythonRuntimeDependencies)) {
     throw "Embedded Python import check failed (run_agent/aiohttp). The offline package may be incomplete."
+  }
+
+  & $PythonExe -m hermes_cli.main --version | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Embedded Hermes CLI module entrypoint check failed."
+  }
+
+  & $PythonExe -m hermes_cli.main sessions export - | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Embedded Hermes CLI session export smoke test failed."
   }
 
   $serverEntry = Join-Path $WebuiDir "dist\server\index.js"

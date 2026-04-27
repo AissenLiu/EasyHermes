@@ -47,7 +47,13 @@ const execFileAsync = promisify(execFile)
 // ============================
 
 const HERMES_BASE = resolve(homedir(), '.hermes')
-const HERMES_BIN = process.env.HERMES_BIN?.trim() || 'hermes'
+const HERMES_PYTHON = process.env.HERMES_PYTHON?.trim() || ''
+const HERMES_BIN = HERMES_PYTHON || process.env.HERMES_BIN?.trim() || 'hermes'
+
+function withHermesEntrypoint(args: string[]): string[] {
+  if (HERMES_PYTHON) return ['-m', 'hermes_cli.main', ...args]
+  return args
+}
 
 // WSL / Docker 没有 systemd 或 launchd，需要用 "gateway run" 代替 "gateway start"
 const isWsl = existsSync('/proc/version') && readFileSync('/proc/version', 'utf-8').toLowerCase().includes('microsoft')
@@ -339,7 +345,7 @@ export class GatewayManager {
   /** 列出所有已知 profile 名称（通过 hermes CLI 或文件系统扫描） */
   async listProfiles(): Promise<string[]> {
     try {
-      const { stdout } = await execFileAsync(HERMES_BIN, ['profile', 'list'], {
+      const { stdout } = await execFileAsync(HERMES_BIN, withHermesEntrypoint(['profile', 'list']), {
         timeout: 10000,
         windowsHide: true,
       })
@@ -413,7 +419,7 @@ export class GatewayManager {
       // WSL / Docker：无 systemd/launchd，用 "gateway run" 作为 detached 子进程
       return new Promise((resolve, reject) => {
         const env = { ...process.env, HERMES_HOME: hermesHome }
-        const child = spawn(HERMES_BIN, ['gateway', 'run', '--replace'], {
+        const child = spawn(HERMES_BIN, withHermesEntrypoint(['gateway', 'run', '--replace']), {
           detached: true,
           stdio: 'ignore',
           windowsHide: true,
@@ -434,7 +440,7 @@ export class GatewayManager {
     logger.info('Starting gateway for profile "%s" (start mode, port: %d)', name, port)
     const env = { ...process.env, HERMES_HOME: hermesHome }
     try {
-      const { stdout } = await execFileAsync(HERMES_BIN, ['gateway', 'start'], {
+      const { stdout } = await execFileAsync(HERMES_BIN, withHermesEntrypoint(['gateway', 'start']), {
         timeout: 30000,
         env,
         windowsHide: true,
@@ -443,7 +449,7 @@ export class GatewayManager {
     } catch {
       // start 失败（可能服务已运行），用 restart
       try {
-        const { stdout } = await execFileAsync(HERMES_BIN, ['gateway', 'restart'], {
+        const { stdout } = await execFileAsync(HERMES_BIN, withHermesEntrypoint(['gateway', 'restart']), {
           timeout: 30000,
           env,
           windowsHide: true,
@@ -493,7 +499,7 @@ export class GatewayManager {
       try {
         const hermesHome = this.profileDir(name)
         const env = { ...process.env, HERMES_HOME: hermesHome }
-        await execFileAsync(HERMES_BIN, ['gateway', 'stop'], {
+        await execFileAsync(HERMES_BIN, withHermesEntrypoint(['gateway', 'stop']), {
           timeout: 10000,
           env,
           windowsHide: true,

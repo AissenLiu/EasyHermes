@@ -1,11 +1,19 @@
 name: Build Offline Packages
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
-      package_tag:
-        description: Git tag to package, for example v0.1.1
+      package_ref:
+        description: Git ref to package, for example main, v0.1.1, or a commit SHA
+        default: main
         required: true
+        type: string
+      release_tag:
+        description: Optional GitHub Release tag to publish. Leave blank to upload artifact only.
+        required: false
         type: string
       python_version:
         description: Windows embeddable Python version
@@ -19,13 +27,34 @@ jobs:
   windows-portable:
     name: Windows portable offline zip
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
+      - name: Resolve package inputs
+        id: package
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $packageRef = "${{ github.event.inputs.package_ref }}"
+            $releaseTag = "${{ github.event.inputs.release_tag }}"
+          } else {
+            $packageRef = "${{ github.ref_name }}"
+            $releaseTag = "${{ github.ref_name }}"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($packageRef)) {
+            throw "package_ref is required."
+          }
+
+          $artifactSuffix = $packageRef -replace '[^A-Za-z0-9_.-]', '-'
+          "ref=$packageRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release_tag=$releaseTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact_suffix=$artifactSuffix" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.package_tag }}
+          ref: ${{ steps.package.outputs.ref }}
 
       - name: Setup Python for wheel download
         uses: actions/setup-python@v5
@@ -45,6 +74,11 @@ jobs:
             -PythonVersion "${{ github.event.inputs.python_version || '3.11.9' }}" `
             -DownloadPython (Get-Command python).Source
 
+      - name: Verify offline bundle contents
+        shell: pwsh
+        run: |
+          .\scripts\verify-offline-bundle.ps1 -RunPrepareOnly
+
       - name: Generate checksum
         shell: pwsh
         run: |
@@ -55,7 +89,7 @@ jobs:
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v4
         with:
-          name: EazyHermes-windows-offline-${{ github.event.inputs.package_tag }}
+          name: EazyHermes-windows-offline-${{ steps.package.outputs.artifact_suffix }}
           path: |
             dist/EazyHermes-windows-offline.zip
             dist/EazyHermes-windows-offline.zip.sha256
@@ -63,11 +97,12 @@ jobs:
           retention-days: 14
 
       - name: Publish GitHub Release
+        if: steps.package.outputs.release_tag != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.event.inputs.package_tag }}"
+          $tag = "${{ steps.package.outputs.release_tag }}"
           $title = "EazyHermes $tag"
           $notes = @"
           EazyHermes Windows 离线包。

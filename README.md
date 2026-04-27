@@ -76,18 +76,19 @@ git tag -a v0.1.2 -m "EazyHermes v0.1.2"
 git push origin v0.1.2
 ```
 
-也可以复用已经存在的 tag，例如 `v0.1.1`。
+推送 `v*` tag 会自动触发完整 Windows 离线包构建。也可以复用已经存在的 tag，例如 `v0.1.1`，通过手动 workflow 构建。
 
 ### 2. 在 GitHub Actions 手动运行
 
 1. 打开仓库的 **Actions** 页面。
 2. 选择 **Build Offline Packages**。
 3. 点击 **Run workflow**。
-4. 填写 `package_tag`，例如 `v0.1.2`。
-5. 保持默认 `python_version=3.11.9`，除非确实要升级内置 Python 运行时。
-6. 点击 **Run workflow** 开始打包。
+4. 填写 `package_ref`，例如 `main`、`v0.1.2` 或某个 commit SHA。
+5. 如需发布到 Releases，填写 `release_tag`，例如 `v0.1.2`；留空则只上传 workflow artifact。
+6. 保持默认 `python_version=3.11.9`，除非确实要升级内置 Python 运行时。
+7. 点击 **Run workflow** 开始打包。
 
-Workflow 会 checkout 到你输入的 tag，然后在 GitHub 的 Windows runner 上完成：
+Workflow 会 checkout 到你输入的 ref，然后在 GitHub 的 Windows runner 上完成：
 
 - 下载 Windows embeddable Python。
 - 下载 Windows portable Node.js。
@@ -95,19 +96,20 @@ Workflow 会 checkout 到你输入的 tag，然后在 GitHub 的 Windows runner 
 - 安装并构建 `EKKOLearnAI/hermes-web-ui`，随后只保留运行所需的生产 npm 依赖。
 - 预装 Python 运行时依赖。
 - 生成 `dist/EazyHermes-windows-offline.zip`。
+- 解压校验离线包，确认包含 `start.bat`、内置 Python/Node、Python wheelhouse、WebUI build 输出和生产 npm 依赖，并执行启动自检。
 - 上传 workflow artifact。
-- 创建或更新对应 tag 的 GitHub Release，并把 zip 与 sha256 校验文件上传到 Releases。
+- 如果设置了 `release_tag` 或推送的是 `v*` tag，创建或更新对应 GitHub Release，并把 zip 与 sha256 校验文件上传到 Releases。
 
 ### 3. 下载产物
 
-构建完成后，打开仓库的 **Releases** 页面，进入对应 tag，例如 `v0.1.2`，下载：
+构建完成后，如果发布到了 Releases，打开仓库的 **Releases** 页面，进入对应 tag，例如 `v0.1.2`，下载：
 
 ```text
 EazyHermes-windows-offline.zip
 EazyHermes-windows-offline.zip.sha256
 ```
 
-workflow run 的 **Artifacts** 区域也会保留一份相同产物，方便临时排查；正式分发建议使用 Releases。
+workflow run 的 **Artifacts** 区域也会保留一份相同产物；如果 `release_tag` 留空，则只从 Artifacts 下载。
 
 可选校验：
 
@@ -172,8 +174,8 @@ dist/EazyHermes-windows-offline.zip
 ## 注意事项
 
 - 本项目当前只面向 Windows 便携离线包，不提供 Docker 镜像包。
-- 离线包会发布到对应 tag 的 GitHub Release；workflow artifact 仍默认保留 14 天。
-- 如果修改了依赖清单，请重新打 tag 并用该 tag 手动打包。
+- 推送 `v*` tag 会自动发布对应 GitHub Release；手动运行时只有填写 `release_tag` 才会发布 Release。workflow artifact 默认保留 14 天。
+- 如果修改了依赖清单，请重新打 tag，或手动指定新的 `package_ref` 构建。
 - 便携包包含 Windows 可用的 Hermes Agent 核心依赖、`cli`、`cron`、`pty` extras、新 WebUI build 输出、生产 npm 依赖和内置 Node.js。
 - `rl`、`yc-bench` 等 git-sourced 实验/训练 extras 不属于当前 Windows 一键运行包；它们依赖外部仓库和特定训练环境。
 - 模型服务本身不包含在离线包内。内网使用时请配置本地 OpenAI-compatible 服务，或确保内网能访问你选择的云模型 API。

@@ -3,17 +3,14 @@ name: Build Offline Packages
 on:
   workflow_dispatch:
     inputs:
+      package_tag:
+        description: Git tag to package, for example v0.1.1
+        required: true
+        type: string
       python_version:
         description: Windows embeddable Python version
         default: "3.11.9"
         required: true
-      build_windows_portable:
-        description: Build portable Windows zip
-        default: true
-        type: boolean
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: read
@@ -22,11 +19,12 @@ jobs:
   windows-portable:
     name: Windows portable offline zip
     runs-on: windows-latest
-    if: github.event_name == 'push' || github.event.inputs.build_windows_portable == 'true'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.package_tag }}
 
       - name: Setup Python for wheel download
         uses: actions/setup-python@v5
@@ -44,7 +42,7 @@ jobs:
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v4
         with:
-          name: EazyHermes-windows-offline
+          name: EazyHermes-windows-offline-${{ github.event.inputs.package_tag }}
           path: dist/EazyHermes-windows-offline.zip
           if-no-files-found: error
           retention-days: 14

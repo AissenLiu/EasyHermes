@@ -136,9 +136,18 @@ function Install-PipOffline {
   }
 }
 
+function Test-PythonRuntimeDependencies {
+  & $PythonExe -c "import run_agent, aiohttp" 2>$null
+  return $LASTEXITCODE -eq 0
+}
+
 function Install-DependenciesOffline {
   if ((Test-Path $InstallStamp) -and (-not $ForceInstall)) {
-    return
+    if (Test-PythonRuntimeDependencies) {
+      return
+    }
+
+    Write-Step "Existing runtime is missing required Python modules, reinstalling dependencies..."
   }
 
   Assert-PathExists $Wheelhouse "Missing packages\wheelhouse. Run scripts\prepare-offline-bundle.ps1 first."
@@ -200,8 +209,7 @@ function Set-RuntimeEnvironment {
 }
 
 function Test-EmbeddedRuntime {
-  & $PythonExe -c "import run_agent, aiohttp"
-  if ($LASTEXITCODE -ne 0) {
+  if (-not (Test-PythonRuntimeDependencies)) {
     throw "Embedded Python import check failed (run_agent/aiohttp). The offline package may be incomplete."
   }
 

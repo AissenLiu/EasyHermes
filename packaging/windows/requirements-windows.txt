@@ -1,8 +1,9 @@
 # Runtime packages needed by the slim EazyHermes offline Windows bundle.
 # This intentionally targets company-intranet WebUI usage: Hermes Agent core
 # dependencies plus cli, cron, and Windows pty extras. Heavy optional platform,
-# voice, browser-automation, dashboard/TUI, training, and dev/test extras are
-# excluded to keep GitHub packaging fast and the release zip smaller.
+# voice/STT, premium TTS, browser-automation, dashboard/TUI, training, and
+# dev/test extras are excluded to keep GitHub packaging fast and the release zip
+# smaller.
 
 pip>=24
 setuptools>=70

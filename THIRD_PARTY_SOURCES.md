@@ -16,5 +16,5 @@ offline Release:
 
 The default offline Release is intentionally slim for intranet Windows usage. It
 does not download Docker images, Node.js runtimes, npm packages, browser
-automation packages, platform bot integrations, voice packages, training extras,
-or development/test extras.
+automation packages, platform bot integrations, heavy voice/STT or premium TTS
+extras, training extras, or development/test extras.

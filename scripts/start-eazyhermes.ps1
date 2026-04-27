@@ -200,9 +200,9 @@ function Set-RuntimeEnvironment {
 }
 
 function Test-EmbeddedRuntime {
-  & $PythonExe -c "import run_agent"
+  & $PythonExe -c "import run_agent, aiohttp"
   if ($LASTEXITCODE -ne 0) {
-    throw "Embedded Python import check failed. The offline package may be incomplete."
+    throw "Embedded Python import check failed (run_agent/aiohttp). The offline package may be incomplete."
   }
 
   $serverEntry = Join-Path $WebuiDir "dist\server\index.js"
@@ -227,6 +227,24 @@ function Wait-Health([string]$Url, [int]$TimeoutSeconds) {
     } catch {
       Start-Sleep -Milliseconds 500
     }
+  }
+  return $false
+}
+
+function Wait-EazyHermesReady([string]$Url, [int]$TimeoutSeconds) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $resp = Invoke-RestMethod -Uri $Url -TimeoutSec 3
+      if ($null -ne $resp -and $resp.status -eq "ok" -and $resp.gateway -eq "running") {
+        return $true
+      }
+    } catch {
+      Start-Sleep -Milliseconds 500
+      continue
+    }
+
+    Start-Sleep -Milliseconds 500
   }
   return $false
 }
@@ -260,13 +278,22 @@ $proc = $null
 try {
   $proc = Start-Process -FilePath $NodeExe -ArgumentList @($serverEntry) -WorkingDirectory $WebuiDir -NoNewWindow -PassThru
   $health = "http://$HostName`:$Port/health"
-  if (Wait-Health -Url $health -TimeoutSeconds 90) {
+  if (Wait-EazyHermesReady -Url $health -TimeoutSeconds 90) {
     Write-Step "WebUI is ready: $url"
     if (-not $NoBrowser) {
       Start-Process $url | Out-Null
     }
   } else {
-    Write-Warning "WebUI did not report healthy within 90 seconds. It may still be starting."
+    $healthDetails = $null
+    try {
+      $healthDetails = Invoke-RestMethod -Uri $health -TimeoutSec 3
+    } catch { }
+
+    if ($null -ne $healthDetails -and $healthDetails.gateway -ne "running") {
+      throw "WebUI started, but Hermes gateway is not healthy. Check data\.hermes\logs\gateway.log and data\.hermes\logs\errors.log for details."
+    }
+
+    Write-Warning "EazyHermes did not report fully healthy within 90 seconds. It may still be starting."
     $proc.Refresh()
     if ($proc.HasExited) {
       throw "WebUI process exited early with code $($proc.ExitCode). See the logs above for details."

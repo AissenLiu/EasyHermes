@@ -37,26 +37,34 @@ function Enable-EmbeddedPythonSite {
   }
 
   $lines = Get-Content -Path $pth.FullName
-  $hasImportSite = $false
-  $next = foreach ($line in $lines) {
-    if ($line.Trim() -eq "import site") {
-      $hasImportSite = $true
-      $line
-    } elseif ($line.Trim() -eq "#import site") {
-      $hasImportSite = $true
-      "import site"
-    } else {
-      $line
+  $requiredPaths = @(".", "..\..\hermes-webui", "..\..\hermes-agent")
+  $seen = @{}
+  $next = @()
+
+  foreach ($line in $lines) {
+    $trimmed = $line.Trim()
+    if ($trimmed -eq "import site" -or $trimmed -eq "#import site") {
+      continue
+    }
+    if ($requiredPaths -contains $trimmed) {
+      $seen[$trimmed] = $true
+    }
+    $next += $line
+  }
+
+  foreach ($path in $requiredPaths) {
+    if (-not $seen.ContainsKey($path)) {
+      $next += $path
     }
   }
-  if (-not $hasImportSite) {
-    $next += "import site"
-  }
+  $next += "import site"
+
   Set-Content -Path $pth.FullName -Value $next -Encoding ASCII
 }
 
 function Initialize-PythonRuntime {
   if (Test-Path $PythonExe) {
+    Enable-EmbeddedPythonSite
     return
   }
 
@@ -117,6 +125,13 @@ function Install-DependenciesOffline {
   Set-Content -Path $InstallStamp -Value (Get-Date -Format o) -Encoding ASCII
 }
 
+function Test-EmbeddedImports {
+  & $PythonExe -c "import api.auth; import api.config; import run_agent"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Embedded Python import check failed. The offline package may be incomplete."
+  }
+}
+
 function Wait-Health([string]$Url, [int]$TimeoutSeconds) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
@@ -140,16 +155,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Root "data\.hermes") | Out
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "data\webui") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "workspace") | Out-Null
 
-Initialize-PythonRuntime
-Install-PipOffline
-Install-DependenciesOffline
-
-if ($PrepareOnly) {
-  Write-Step "Runtime is ready."
-  exit 0
-}
-
 $env:PYTHONUTF8 = "1"
+$env:PYTHONPATH = (@($WebuiDir, $AgentDir, $env:PYTHONPATH) | Where-Object { $_ }) -join ";"
 $env:HERMES_HOME = Join-Path $Root "data\.hermes"
 $env:HERMES_BASE_HOME = $env:HERMES_HOME
 $env:HERMES_WEBUI_AGENT_DIR = $AgentDir
@@ -159,6 +166,16 @@ $env:HERMES_WEBUI_DEFAULT_WORKSPACE = Join-Path $Root "workspace"
 $env:HERMES_WEBUI_HOST = $HostName
 $env:HERMES_WEBUI_PORT = [string]$Port
 $env:HERMES_WEBUI_AUTO_INSTALL = "0"
+
+Initialize-PythonRuntime
+Install-PipOffline
+Install-DependenciesOffline
+Test-EmbeddedImports
+
+if ($PrepareOnly) {
+  Write-Step "Runtime is ready."
+  exit 0
+}
 
 $url = "http://127.0.0.1:$Port"
 Write-Step "Starting WebUI at $url ..."
@@ -174,10 +191,16 @@ try {
     }
   } else {
     Write-Warning "WebUI did not report healthy within 35 seconds. It may still be starting."
+    $proc.Refresh()
+    if ($proc.HasExited) {
+      throw "WebUI process exited early with code $($proc.ExitCode). See the traceback above for details."
+    }
   }
 
   Write-Step "Press Ctrl+C to stop EazyHermes."
-  Wait-Process -Id $proc.Id
+  if (-not $proc.HasExited) {
+    Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
+  }
 } finally {
   if ($null -ne $proc -and -not $proc.HasExited) {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue

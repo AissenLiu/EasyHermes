@@ -11,14 +11,19 @@ on:
         description: Windows embeddable Python version
         default: "3.11.9"
         required: true
+      node_version:
+        description: Windows portable Node.js version
+        default: "20.11.1"
+        required: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows-portable:
     name: Windows portable offline zip
     runs-on: windows-latest
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -37,12 +42,60 @@ jobs:
           .\scripts\prepare-offline-bundle.ps1 `
             -Refresh `
             -PythonVersion "${{ github.event.inputs.python_version || '3.11.9' }}" `
+            -NodeVersion "${{ github.event.inputs.node_version || '20.11.1' }}" `
             -DownloadPython (Get-Command python).Source
+
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $zip = "dist\EazyHermes-windows-offline.zip"
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          "$hash  EazyHermes-windows-offline.zip" | Set-Content -Encoding ASCII "dist\EazyHermes-windows-offline.zip.sha256"
 
       - name: Upload Windows bundle
         uses: actions/upload-artifact@v4
         with:
           name: EazyHermes-windows-offline-${{ github.event.inputs.package_tag }}
-          path: dist/EazyHermes-windows-offline.zip
+          path: |
+            dist/EazyHermes-windows-offline.zip
+            dist/EazyHermes-windows-offline.zip.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.inputs.package_tag }}"
+          $title = "EazyHermes $tag"
+          $notes = @"
+          EazyHermes Windows 离线包。
+
+          使用方式：
+          1. 下载 EazyHermes-windows-offline.zip。
+          2. 拷贝到内网 Windows 电脑并解压。
+          3. 双击 start.bat 启动。
+
+          本 Release 由 GitHub Actions 手动输入 tag 构建生成。
+          "@
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag `
+              --repo $env:GITHUB_REPOSITORY `
+              --title $title `
+              --notes $notes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create GitHub Release for $tag."
+            }
+          }
+
+          gh release upload $tag `
+            "dist\EazyHermes-windows-offline.zip" `
+            "dist\EazyHermes-windows-offline.zip.sha256" `
+            --repo $env:GITHUB_REPOSITORY `
+            --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upload release assets for $tag."
+          }

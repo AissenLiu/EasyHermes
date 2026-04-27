@@ -7,3 +7,11 @@ This repository vendors source snapshots from:
 
 Each project keeps its original license file in its vendored directory.
 
+GitHub Actions also downloads runtime/package assets while building the Windows
+offline Release:
+
+- Windows embeddable Python: https://www.python.org/
+- Windows portable Node.js: https://nodejs.org/
+- Python wheels: https://pypi.org/
+- Node packages: https://www.npmjs.com/
+- WebUI browser assets: KaTeX, Prism.js, Mermaid, and streaming-markdown

@@ -10,8 +10,6 @@
 
 # Build outputs
 /dist/
-/offline/images/*.tar
-/offline/images/*.tar.gz
 *.zip.tmp
 
 # Python / Node local artifacts

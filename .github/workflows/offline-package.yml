@@ -11,10 +11,6 @@ on:
         description: Build portable Windows zip
         default: true
         type: boolean
-      build_docker_image:
-        description: Build Docker offline image tar.gz
-        default: true
-        type: boolean
   push:
     tags:
       - "v*"
@@ -50,36 +46,5 @@ jobs:
         with:
           name: EazyHermes-windows-offline
           path: dist/EazyHermes-windows-offline.zip
-          if-no-files-found: error
-          retention-days: 14
-
-  docker-image:
-    name: Docker offline image
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event.inputs.build_docker_image == 'true'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: |
-          docker build \
-            -f deploy/docker/Dockerfile.eazyhermes \
-            -t eazyhermes:local \
-            .
-
-      - name: Save compressed image tar
-        run: |
-          mkdir -p offline/images
-          docker save eazyhermes:local -o offline/images/eazyhermes-amd64.tar
-          gzip -9 offline/images/eazyhermes-amd64.tar
-          ls -lh offline/images/
-
-      - name: Upload Docker image tar
-        uses: actions/upload-artifact@v4
-        with:
-          name: EazyHermes-docker-image-amd64
-          path: offline/images/eazyhermes-amd64.tar.gz
           if-no-files-found: error
           retention-days: 14
